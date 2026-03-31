@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kling AI Motion Control Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    .drop-zone { transition: all 0.3s ease; }
+    .drop-zone.dragover { background-color: #1f2937; border-color: #22c55e; transform: scale(1.02); }
+  </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen">
+
+  <div class="max-w-6xl mx-auto px-6 py-12">
+    <div class="text-center mb-12">
+      <h1 class="text-5xl font-bold mb-3">Kling AI <span class="text-green-500">Motion Control</span></h1>
+      <p class="text-gray-400 text-lg">Upload Reference Image + Motion Video → Generate Realistic Video</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+      <!-- Reference Image -->
+      <div>
+        <label class="block text-lg font-medium mb-4">📸 Reference Image (Character)</label>
+        <div id="image-drop" class="drop-zone border-2 border-dashed border-gray-600 rounded-3xl h-96 flex flex-col items-center justify-center cursor-pointer hover:border-green-400">
+          <input type="file" id="image-input" accept="image/*" class="hidden">
+          <i class="fa-solid fa-image text-8xl text-green-400 mb-6"></i>
+          <p class="text-2xl">Drop or Click to Upload Image</p>
+          <p class="text-gray-500 mt-3">JPG / PNG • Max 10MB</p>
+        </div>
+        <img id="image-preview" class="hidden mt-6 rounded-3xl shadow-2xl w-full max-h-96 object-contain">
+      </div>
+
+      <!-- Motion Video -->
+      <div>
+        <label class="block text-lg font-medium mb-4">🎬 Motion Reference Video</label>
+        <div id="video-drop" class="drop-zone border-2 border-dashed border-gray-600 rounded-3xl h-96 flex flex-col items-center justify-center cursor-pointer hover:border-green-400">
+          <input type="file" id="video-input" accept="video/*" class="hidden">
+          <i class="fa-solid fa-film text-8xl text-green-400 mb-6"></i>
+          <p class="text-2xl">Drop or Click to Upload Video</p>
+          <p class="text-gray-500 mt-3">MP4 • 3-30 seconds</p>
+        </div>
+        <video id="video-preview" controls class="hidden mt-6 rounded-3xl shadow-2xl w-full max-h-96"></video>
+      </div>
+    </div>
+
+    <!-- Prompt -->
+    <div class="mt-12">
+      <label class="block text-lg font-medium mb-4">✍️ Prompt (Optional)</label>
+      <textarea id="prompt" rows="4" class="w-full bg-zinc-900 border border-zinc-700 rounded-3xl p-6 text-lg focus:border-green-500 focus:outline-none" 
+        placeholder="A beautiful girl dancing gracefully in a futuristic neon city at night..."></textarea>
+    </div>
+
+    <!-- Options -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+      <div>
+        <label class="block text-sm text-gray-400 mb-2">MODEL</label>
+        <select id="model" class="w-full bg-zinc-900 border border-zinc-700 rounded-2xl p-5 text-lg">
+          <option value="kling-v2-6">Kling 2.6</option>
+          <option value="kling-v3">Kling 3.0</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-2">MODE</label>
+        <select id="mode" class="w-full bg-zinc-900 border border-zinc-700 rounded-2xl p-5 text-lg">
+          <option value="pro">Pro Quality</option>
+          <option value="std">Standard</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-2">ORIENTATION</label>
+        <select id="orientation" class="w-full bg-zinc-900 border border-zinc-700 rounded-2xl p-5 text-lg">
+          <option value="image">From Image</option>
+          <option value="video">From Video</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Generate Button -->
+    <button onclick="startGeneration()" id="generate-btn"
+      class="mt-14 w-full py-8 text-3xl font-bold bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-3xl flex items-center justify-center gap-4 shadow-2xl">
+      <i class="fa-solid fa-bolt-lightning"></i>
+      GENERATE VIDEO
+    </button>
+
+    <!-- Result -->
+    <div id="result-section" class="hidden mt-20 text-center">
+      <p class="text-green-400 text-2xl mb-8">✅ Generation Completed!</p>
+      <video id="result-video" controls class="mx-auto rounded-3xl shadow-2xl max-w-4xl w-full"></video>
+      <a id="download-btn" href="#" download class="mt-10 inline-flex items-center gap-3 text-green-400 hover:text-green-300 text-xl">
+        <i class="fa-solid fa-download"></i> Download Video
+      </a>
+    </div>
+  </div>
+
+  <script>
+    let imageFile = null;
+    let videoFile = null;
+
+    function setupDropZone(dropId, inputId, previewId, isVideo) {
+      const drop = document.getElementById(dropId);
+      const input = document.getElementById(inputId);
+      const preview = document.getElementById(previewId);
+
+      drop.addEventListener('click', () => input.click());
+      drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+      drop.addEventListener('drop', e => {
+        e.preventDefault();
+        drop.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file, preview, isVideo);
+      });
+      input.addEventListener('change', () => {
+        if (input.files[0]) handleFile(input.files[0], preview, isVideo);
+      });
+    }
+
+    function handleFile(file, preview, isVideo) {
+      if (isVideo) videoFile = file; else imageFile = file;
+      preview.src = URL.createObjectURL(file);
+      preview.classList.remove('hidden');
+    }
+
+    setupDropZone('image-drop', 'image-input', 'image-preview', false);
+    setupDropZone('video-drop', 'video-input', 'video-preview', true);
+
+    async function startGeneration() {
+      const btn = document.getElementById('generate-btn');
+      const originalHTML = btn.innerHTML;
+
+      if (!imageFile || !videoFile) {
+        alert("❌ Please upload both Reference Image and Motion Video");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating... (30-120 seconds)`;
+
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      formData.append('video', videoFile);
+      formData.append('prompt', document.getElementById('prompt').value);
+      formData.append('model_name', document.getElementById('model').value);
+      formData.append('mode', document.getElementById('mode').value);
+      formData.append('orientation', document.getElementById('orientation').value);
+
+      try {
+        // ================== Render.com এর জন্য এই লাইন ==================
+        const response = await fetch('/generate', {
+          method: 'POST',
+          body: formData
+        });
+        // =================================================================
+
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('result-section').classList.remove('hidden');
+          document.getElementById('result-video').src = data.video_url;
+          document.getElementById('download-btn').href = data.video_url;
+        } else {
+          alert("❌ " + (data.error || "Generation failed"));
+        }
+      } catch (err) {
+        alert("❌ Backend not connected.\n\nMake sure your Render.com app is deployed and running.");
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
+  </script>
+</body>
+</html>
